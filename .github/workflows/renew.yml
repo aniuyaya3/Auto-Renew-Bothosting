@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       actions: write
-      contents: read
+      contents: write # 回写 time.txt 需要写权限（原为 read）
 
     steps:
       - uses: actions/checkout@v6
@@ -44,6 +44,51 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           xvfb-run --auto-servernum python3 app.py
+
+      - name: 🕐 生成并回写 time.txt
+        if: always() # 续期成功/失败都记录本次运行时间
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVENT_NAME: ${{ github.event_name }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          write_time() {
+            {
+              echo "Last run: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S') (Asia/Shanghai)"
+              echo "UTC: $(date -u '+%Y-%m-%d %H:%M:%S')"
+              echo "Workflow: ${WORKFLOW_NAME}"
+              echo "Run: #${RUN_NUMBER} (attempt ${RUN_ATTEMPT})"
+              echo "Trigger: ${EVENT_NAME}"
+            } > time.txt
+          }
+          write_time
+          cat time.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add time.txt
+          if git diff --cached --quiet; then
+            echo "time.txt 无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore: update time.txt [skip ci]"
+          if git push origin "HEAD:${BRANCH_NAME}"; then
+            echo "✅ time.txt 已回写仓库"
+            exit 0
+          fi
+          echo "⚠️ push 被拒绝（远程分支已前进），基于最新远程重新生成后重试一次"
+          git fetch origin "${BRANCH_NAME}"
+          git reset --hard "origin/${BRANCH_NAME}"
+          write_time
+          git add time.txt
+          if git diff --cached --quiet; then
+            echo "重新生成后无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore: update time.txt [skip ci]"
+          git push origin "HEAD:${BRANCH_NAME}"
+          echo "✅ time.txt 已回写仓库（重试成功）"
 
       - name: 🧽 清理进程和临时文件
         if: always()
