@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       actions: write
-      contents: read
+      contents: write
 
     steps:
       - uses: actions/checkout@v6
@@ -42,6 +42,17 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           xvfb-run --auto-servernum python3 app.py
+          
+      - name: 🕐 回写 time.txt
+        if: always()
+        run: |
+          TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S' > time.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add time.txt
+          git diff --cached --quiet || git commit -m "chore: update time.txt [skip ci]"
+          git push origin "HEAD:${{ github.ref_name }}"
+
 
       - name: 🧽 清理进程和临时文件
         if: always()
